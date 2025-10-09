@@ -1,12 +1,11 @@
 {
   "name": "hermesai",
-  "version": "0.0.1-prerelease",
-  "private": true,
+  "version": "0.0.1-prerelease-gracie1",
   "type": "module",
   "bin": {
     "hermesai": "index.js"
   },
   "dependencies": {
-    "@hermesai/eztree": "^2.0.0-prerelease"
+    "@hermesai/eztree": "^2.0.0"
   }
 }
