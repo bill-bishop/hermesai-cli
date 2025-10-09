@@ -1,0 +1,21 @@
+# Angular CLI cache
+.angular/
+.angular/cache/
+
+# VS Code settings
+.vscode/
+
+# Node modules
+node_modules/
+
+# Build output
+dist/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+
+# Environment variables
+.env
