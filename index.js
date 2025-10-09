@@ -7,6 +7,12 @@
 
 import readline from "readline";
 import chalk from "chalk";
+import fs from "fs";
+import path from "node:path";
+
+const {promisify} = await import('util');
+const {exec: execCallback} = await import('child_process');
+const exec = promisify(execCallback);
 const { stdin: input, stdout: output } = process;
 
 // ───────────── Config ─────────────
@@ -107,11 +113,16 @@ Be pragmatic and concise.
 const DELEGATOR_SYS = `
 You are the Delegation Agent.
 You never code yourself; you orchestrate:
-1) plan() -> actionable plan with references
-2) code() -> minimal code + integration notes
-3) Return a succinct final handoff summary
-Never call delegate().
+1) plan() -> actionable, ordered plan to scaffold project, install dependencies, and make or alter specific files
+2) For EACH code scaffolding/install/build/run step in the plan, call exec() exactly once with:
+   - cmd: Ubuntu shell instruction
+   - cwd: the project-relative file path where the instruction will be executed
+3) For EACH file in the plan, call code() exactly once with:
+   - task_brief: a precise, single-file instruction
+   - output_path: the project-relative file path that will receive the code
+4) After all steps are handled, return a final handoff summary
 `.trim();
+
 
 const PLANNING_SYS = `
 You are the Planning Agent.
@@ -123,7 +134,8 @@ Before constructing the plan, you MUST use the web_search tool to check:
 Then produce a concrete, implementable plan with:
 - Goal summary
 - Assumptions and chosen versions (pin exact versions)
-- Step-by-step milestones
+- Step-by-step milestones:
+  - Ordered list of code-scaffolding/install/build/run steps interlaced with file-specific creation/alteration
 - Risks/unknowns
 - Short References section with the key URLs you used
 
@@ -155,10 +167,32 @@ const tool_plan = {
 const tool_code = {
     type: "function",
     name: "code",
-    description: "Ask Coding agent for code and integration notes.",
-    parameters: { type: "object", properties: { task_brief: { type: "string" } }, required: ["task_brief"] },
+    description: "Ask Coding agent for raw code for ONE file; harness will use output_path.",
+    parameters: {
+        type: "object",
+        properties: {
+            task_brief: { type: "string" },
+            output_path: { type: "string", description: "Project-relative path the code will be written to." }
+        },
+        required: ["task_brief", "output_path"]
+    },
     strict: false,
 };
+const tool_exec = {
+    type: "function",
+    name: "exec",
+    description: "Execute Ubuntu shell commands",
+    parameters: {
+        type: "object",
+        properties: {
+            cmd: { type: "string", "description": "the shell command to execute" },
+            cwd: { type: "string", "description": "the relative path where the command should be executed" },
+        },
+        required: ["cmd"]
+    },
+    strict: false,
+};
+
 
 // ───────────── Recursive Runner ─────────────
 /**
@@ -234,7 +268,7 @@ async function runWithTools({
                         model: "gpt-4.1-mini",
                         system: DELEGATOR_SYS,
                         userInput: `Task: ${brief}`,
-                        tools: [tool_plan, tool_code],
+                        tools: [tool_plan, tool_code, tool_exec],
                         agentLabel: "Delegation Agent",
                         depth: depth + 1,
                         ctx,
@@ -255,10 +289,20 @@ async function runWithTools({
                     });
                     ctx.lastPlanSummary = out.slice(0, 1000);
                 } else if (name === "code") {
+                    const outPath = path.resolve(c.payload?.output_path) || "(unspecified)";
+                    const briefOnly = c.payload?.task_brief || brief;
+
+                    const currentFile = String(await fs.promises.readFile(outPath)).trim() || '(none)';
+
                     out = await runWithTools({
                         model: "gpt-4.1",
                         system: CODING_SYS,
-                        userInput: `Task: ${brief}\nPlan Summary: ${ctx.lastPlanSummary}`,
+                        userInput: `Target file: ${outPath}
+Target file current content:\n\n${currentFile}\n\n              
+Task: ${briefOnly}
+Plan Summary: ${ctx.lastPlanSummary}
+
+Return RAW code only (no fences, no prose).`,
                         tools: [],
                         agentLabel: "Coding Agent",
                         depth: depth + 1,
@@ -266,7 +310,24 @@ async function runWithTools({
                         transcripts,
                         quiet: true,
                     });
-                } else {
+
+                    await fs.promises.mkdir(path.dirname(outPath), {recursive: true});
+                    await fs.promises.writeFile(outPath, out);
+                }
+                else if (name === "exec") {
+                    const cmd = c.payload.cmd;
+                    const cwd = path.resolve(c.payload.cwd);
+
+                    try {
+                        const {stdout, stderr} = await exec(cmd, {cwd});
+
+                        out = stdout || stderr;
+                    } catch (error) {
+                        out = `Shell error: ${error.message}`;
+                    }
+
+                }
+                else {
                     out = `[Tool ${name} not implemented]`;
                 }
             } catch (err) {
