@@ -7,6 +7,11 @@
 
 import readline from "readline";
 import chalk from "chalk";
+
+// ----- START HERMES AI TOOLS -----
+import { eztree } from '@hermesai/eztree';
+// ----- END HERMES AI TOOLS -----
+
 import fs from "fs";
 import path from "node:path";
 
@@ -126,21 +131,17 @@ You never code yourself; you orchestrate:
 
 const PLANNING_SYS = `
 You are the Planning Agent.
-Before constructing the plan, you MUST use the web_search tool to check:
+Before constructing the plan, call readfile() to inspect any project files that will be changed
+
+Then search the web to check:
 - Latest stable versions of all relevant dependencies/frameworks
 - Official docs (installation, quickstart, production notes)
 - Any common pitfalls or deployment gotchas
 
-Then produce a concrete, implementable plan with:
-- Goal summary
-- Assumptions and chosen versions (pin exact versions)
-- Step-by-step milestones:
-  - Ordered list of code-scaffolding/install/build/run steps interlaced with file-specific creation/alteration
-- Risks/unknowns
-- Short References section with the key URLs you used
-
-If web_search cannot find something, note the assumption clearly.
-Be concise and implementable.
+Then produce a concrete, implementable plan with step-by-step milestones:
+- Assumptions, risks, unknowns
+- Citations for any web searches used
+- Ordered list of code-scaffolding/install/build/run steps, interleaved with file-specific creation/alteration steps
 `.trim();
 
 
@@ -189,6 +190,15 @@ const tool_exec = {
             cwd: { type: "string", "description": "the relative path where the command should be executed" },
         },
         required: ["cmd"]
+    },
+    strict: false,
+};
+const tool_readfile = {
+    type: "function",
+    name: "readfile",
+    description: "Read project file contents",
+    parameters: {
+        filePath: { type: "string", "description": "the relative path to the file"}
     },
     strict: false,
 };
@@ -254,7 +264,8 @@ async function runWithTools({
             continue;
         }
 
-        console.log(`${prefix}  . ${calls.length} tool call(s)`);
+        console.log(`${prefix}  . ${calls.length} tool call(s):`);
+        console.log(`${prefix} \t\t ${calls.map(({payload}) => JSON.stringify(payload)).join(' . ')}`)
         const outputs = [];
         for (const c of calls) {
             const name = c.name;
@@ -276,11 +287,15 @@ async function runWithTools({
                         quiet: true,
                     });
                 } else if (name === "plan") {
+                    const projectStructure = eztree('.') || '(tree generation error)';
                     out = await runWithTools({
                         model: "gpt-4.1",
                         system: PLANNING_SYS,
-                        userInput: `Plan for: ${brief}`,
-                        tools: [{ type: "web_search" }],
+                        userInput: `Current project structure:
+${projectStructure}
+
+Plan for: ${brief}`,
+                        tools: [{ type: "web_search" }, tool_readfile],
                         agentLabel: "Planning Agent",
                         depth: depth + 1,
                         ctx,
@@ -316,7 +331,7 @@ Return RAW code only (no fences, no prose).`,
                 }
                 else if (name === "exec") {
                     const cmd = c.payload.cmd;
-                    const cwd = path.resolve(c.payload.cwd);
+                    const cwd = path.resolve(c.payload?.cwd || '.');
 
                     try {
                         const {stdout, stderr} = await exec(cmd, {cwd});
