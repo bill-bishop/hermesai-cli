@@ -1,0 +1,20 @@
+{
+  "name": "agentic-modularized",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --enable-source-maps dist/cli/main.js",
+    "dev": "tsx cli/main.ts"
+  },
+  "dependencies": {
+    "@hermesai/eztree": "*",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3"
+  }
+}
