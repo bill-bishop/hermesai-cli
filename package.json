@@ -5,6 +5,14 @@
   "bin": {
     "hermesai": "index.js"
   },
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.cjs"
+    }
+  },
+  "main": "./index.cjs",
+  "module": "./index.js",
   "dependencies": {
     "@hermesai/eztree": "^2.0.0",
     "chalk": "^5.6.2"

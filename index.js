@@ -133,7 +133,10 @@ function extractToolCalls(resp) {
     for (const o of resp.output ?? []) {
         if (o.type === "function_call") {
             const args = typeof o.arguments === "string" ? safeJsonParse(o.arguments) : (o.arguments || {});
-            calls.push({ id: o.call_id || o.id, name: o.name, payload: args });
+            calls.push({ id: o.call_id || o.id, name: o.name, payload: args, type: o.type });
+        }
+        else {
+            // console.log('MISSING TOOL TYPE:', o);
         }
     }
     return calls;
@@ -267,6 +270,10 @@ async function runWithTools({
     console.log(`${prefix}${colorAgent(agentLabel)}  (${chalk.gray(convId)})`);
     console.log(`${prefix}- ${truncateOneLine(userInput || "")}`);
 
+    if (tools) {
+        // console.log('TOOLS', tools);
+    }
+
     let resp = await openaiCreateResponse({
         model,
         conversation: convId,
@@ -330,7 +337,7 @@ async function runWithTools({
 ${projectStructure}
 
 Plan for: ${brief}`,
-                        tools: [tool_readfile, { name: 'web_search' }],
+                        tools: [tool_readfile, { type: 'web_search' }],
                         agentLabel: "Planning Agent",
                         depth: depth + 1,
                         ctx,
