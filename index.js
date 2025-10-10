@@ -28,6 +28,9 @@ if (!API_KEY) {
 }
 const BASE = process.env.OPENAI_BASE_URL || "https://api.openai.com";
 
+const TRUNCATE_LIMIT = 5000;
+const TRUNCATE_TO_FIRST_LINE = false;
+
 // ───────────── Utilities ─────────────
 function safeJsonParse(s) { try { return JSON.parse(s); } catch { return s; } }
 function asString(v) { return typeof v === "string" ? v : JSON.stringify(v); }
@@ -38,8 +41,8 @@ function oneLine(str) {
     const line = String(str).split(/\r?\n/)[0] || "";
     return line.trim();
 }
-function truncateOneLine(str, n = 50) {
-    const line = oneLine(str);
+function truncateOneLine(str, n = TRUNCATE_LIMIT) {
+    const line = TRUNCATE_TO_FIRST_LINE ? oneLine(str) : str;
     return line.length > n ? line.slice(0, n) + chalk.gray(" ...") : line;
 }
 
@@ -198,7 +201,11 @@ const tool_readfile = {
     name: "readfile",
     description: "Read project file contents",
     parameters: {
-        filePath: { type: "string", "description": "the relative path to the file"}
+        type: "object",
+        properties: {
+            filePath: { type: "string", "description": "the relative path to the file"},
+        },
+        required: ["filePath"],
     },
     strict: false,
 };
@@ -230,7 +237,7 @@ async function runWithTools({
     const convId = await createConversation();
     const prefix = indent(depth);
     console.log(`${prefix}${colorAgent(agentLabel)}  (${chalk.gray(convId)})`);
-    console.log(`${prefix}- ${truncateOneLine(userInput || "", 300)}`);
+    console.log(`${prefix}- ${truncateOneLine(userInput || "")}`);
 
     let resp = await openaiCreateResponse({
         model,
@@ -270,7 +277,7 @@ async function runWithTools({
         for (const c of calls) {
             const name = c.name;
             const brief = c.payload?.task_brief || "";
-            console.log(`${prefix}  -> ${chalk.bold(name)} ${chalk.dim(truncateOneLine(brief, 80))}`);
+            console.log(`${prefix}  -> ${chalk.bold(name)} ${chalk.dim(truncateOneLine(brief))}`);
 
             let out = "";
             try {
@@ -295,7 +302,7 @@ async function runWithTools({
 ${projectStructure}
 
 Plan for: ${brief}`,
-                        tools: [{ type: "web_search" }, tool_readfile],
+                        tools: [tool_readfile],
                         agentLabel: "Planning Agent",
                         depth: depth + 1,
                         ctx,
@@ -342,6 +349,17 @@ Return RAW code only (no fences, no prose).`,
                     }
 
                 }
+                else if (name === "readfile") {
+                    const filePath = path.resolve(c.payload.filePath);
+
+                    try {
+                        const currentFile = String(await fs.promises.readFile(filePath)).trim() || '(no file contents present)';
+                        out = currentFile;
+                    } catch (error) {
+                        out = `Readfile error: ${error.message}`;
+                    }
+
+                }
                 else {
                     out = `[Tool ${name} not implemented]`;
                 }
@@ -350,7 +368,7 @@ Return RAW code only (no fences, no prose).`,
             }
 
             outputs.push({ type: "function_call_output", call_id: c.id, output: asString(out) });
-            console.log(`${prefix}  <- done ${chalk.dim(name)} (${truncateOneLine(out, 50)})`);
+            console.log(`${prefix}  <- done ${chalk.dim(name)} (${truncateOneLine(out)})`);
         }
 
         // Return tool outputs to resolve pending calls in this conversation
@@ -394,7 +412,7 @@ async function runUserAgent(text) {
         }, {});
         for (const agent of Object.keys(byAgent)) {
             console.log(colorAgent(`■ ${agent}`));
-            console.log(byAgent[agent].map(s => truncateOneLine(s, 300)).join("\n"));
+            console.log(byAgent[agent].map(s => truncateOneLine(s)).join("\n"));
             console.log(""); // spacing
         }
         console.log(chalk.gray("--------------------------------------------"));
