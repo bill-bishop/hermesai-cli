@@ -31,7 +31,35 @@ const BASE = process.env.OPENAI_BASE_URL || "https://api.openai.com";
 const TRUNCATE_LIMIT = 5000;
 const TRUNCATE_TO_FIRST_LINE = false;
 
+const PROJECT_ROOT = path.resolve(process.cwd()); // working directory = project root
+const REAL_PROJECT_ROOT = await fs.promises.realpath(PROJECT_ROOT).catch(() => PROJECT_ROOT);
+
 // ───────────── Utilities ─────────────
+
+
+async function resolveInsideRoot(userPath = ".") {
+    // Strip any drive letter / leading slash
+    if (path.isAbsolute(userPath)) userPath = path.relative(path.parse(userPath).root, userPath);
+
+    // Normalize relative to project root
+    const absPath = path.resolve(PROJECT_ROOT, userPath);
+    const rel = path.relative(PROJECT_ROOT, absPath);
+
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+        throw new Error(`Path escapes project root: ${userPath}`);
+    }
+
+    // Symlink-aware check
+    const realAbs = await fs.promises.realpath(absPath).catch(() => absPath);
+    const realRel = path.relative(REAL_PROJECT_ROOT, realAbs);
+    if (realRel.startsWith("..") || path.isAbsolute(realRel)) {
+        throw new Error(`Symlink escape: ${userPath}`);
+    }
+
+    // Return both absolute + project-relative for later use
+    return { abs: realAbs, rel: path.relative(PROJECT_ROOT, realAbs) };
+}
+
 function safeJsonParse(s) { try { return JSON.parse(s); } catch { return s; } }
 function asString(v) { return typeof v === "string" ? v : JSON.stringify(v); }
 
@@ -302,7 +330,7 @@ async function runWithTools({
 ${projectStructure}
 
 Plan for: ${brief}`,
-                        tools: [tool_readfile],
+                        tools: [tool_readfile, { name: 'web_search' }],
                         agentLabel: "Planning Agent",
                         depth: depth + 1,
                         ctx,
@@ -311,7 +339,7 @@ Plan for: ${brief}`,
                     });
                     ctx.lastPlanSummary = out.slice(0, 1000);
                 } else if (name === "code") {
-                    const outPath = path.resolve(c.payload?.output_path) || "(unspecified)";
+                    const outPath = await resolveInsideRoot(c.payload?.output_path) || "(unspecified)";
                     const briefOnly = c.payload?.task_brief || brief;
 
                     const currentFile = String(await fs.promises.readFile(outPath)).trim() || '(none)';
@@ -338,7 +366,7 @@ Return RAW code only (no fences, no prose).`,
                 }
                 else if (name === "exec") {
                     const cmd = c.payload.cmd;
-                    const cwd = path.resolve(c.payload?.cwd || '.');
+                    const cwd = await resolveInsideRoot(c.payload?.cwd || '.');
 
                     try {
                         const {stdout, stderr} = await exec(cmd, {cwd});
@@ -350,7 +378,7 @@ Return RAW code only (no fences, no prose).`,
 
                 }
                 else if (name === "readfile") {
-                    const filePath = path.resolve(c.payload.filePath);
+                    const filePath = await resolveInsideRoot(c.payload.filePath);
 
                     try {
                         const currentFile = String(await fs.promises.readFile(filePath)).trim() || '(no file contents present)';
