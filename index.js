@@ -339,10 +339,11 @@ Plan for: ${brief}`,
                     });
                     ctx.lastPlanSummary = out.slice(0, 1000);
                 } else if (name === "code") {
-                    const outPath = await resolveInsideRoot(c.payload?.output_path) || "(unspecified)";
+                    const { abs, rel } = await resolveInsideRoot(c.payload?.output_path);
+                    const outPath =  rel || "(unspecified)";
                     const briefOnly = c.payload?.task_brief || brief;
 
-                    const currentFile = String(await fs.promises.readFile(outPath)).trim() || '(none)';
+                    const currentFile = String(await fs.promises.readFile(abs)).trim() || '(none)';
 
                     out = await runWithTools({
                         model: "gpt-4.1",
@@ -361,12 +362,13 @@ Return RAW code only (no fences, no prose).`,
                         quiet: true,
                     });
 
-                    await fs.promises.mkdir(path.dirname(outPath), {recursive: true});
-                    await fs.promises.writeFile(outPath, out);
+                    await fs.promises.mkdir(path.dirname(abs), {recursive: true});
+                    await fs.promises.writeFile(abs, out);
                 }
                 else if (name === "exec") {
+                    const { abs } = await resolveInsideRoot(c.payload?.cwd);
                     const cmd = c.payload.cmd;
-                    const cwd = path.resolve(await resolveInsideRoot(c.payload?.cwd || '.'));
+                    const cwd = abs;
 
                     try {
                         const {stdout, stderr} = await exec(cmd, {cwd});
@@ -378,7 +380,8 @@ Return RAW code only (no fences, no prose).`,
 
                 }
                 else if (name === "readfile") {
-                    const filePath = path.resolve(await resolveInsideRoot(c.payload.filePath));
+                    const { rel } = await resolveInsideRoot(c.payload.filePath);
+                    const filePath = path.resolve(rel);
 
                     try {
                         const currentFile = String(await fs.promises.readFile(filePath)).trim() || '(no file contents present)';
