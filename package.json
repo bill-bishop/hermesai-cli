@@ -1,6 +1,6 @@
 {
   "name": "hermesai",
-  "version": "0.0.1-prerelease-gracie2",
+  "version": "0.0.1-prerelease-gracie3",
   "type": "module",
   "bin": {
     "hermesai": "index.js"
