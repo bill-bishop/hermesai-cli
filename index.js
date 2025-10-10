@@ -366,7 +366,7 @@ Return RAW code only (no fences, no prose).`,
                 }
                 else if (name === "exec") {
                     const cmd = c.payload.cmd;
-                    const cwd = await resolveInsideRoot(c.payload?.cwd || '.');
+                    const cwd = path.resolve(await resolveInsideRoot(c.payload?.cwd || '.'));
 
                     try {
                         const {stdout, stderr} = await exec(cmd, {cwd});
@@ -378,7 +378,7 @@ Return RAW code only (no fences, no prose).`,
 
                 }
                 else if (name === "readfile") {
-                    const filePath = await resolveInsideRoot(c.payload.filePath);
+                    const filePath = path.resolve(await resolveInsideRoot(c.payload.filePath));
 
                     try {
                         const currentFile = String(await fs.promises.readFile(filePath)).trim() || '(no file contents present)';
