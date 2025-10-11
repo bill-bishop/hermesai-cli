@@ -8,14 +8,15 @@ import { exec as execCallback } from "node:child_process";
 // HermesAI tools
 import { eztree } from "@hermesai/eztree";
 // Core helpers
-import { indent, truncateOneLine, colorAgent, pushTranscript, asString } from "../core/util.js";
-import { resolveInsideRoot } from "../core/path.js";
+import { indent, truncateOneLine, colorAgent, pushTranscript, asString } from "../core/util";
+import { resolveInsideRoot } from "../core/path";
 // OpenAI adapter bits
-import { createConversation, openaiCreateResponse, extractAssistantText, extractToolCalls, buildRequest } from "../adapters/openai/openaiAdapter.js";
-import { USER_AGENT_SYS, DELEGATOR_SYS, PLANNING_SYS, CODING_SYS } from "../adapters/openai/prompts.js";
-import { tool_delegate, tool_plan, tool_code, tool_exec, tool_readfile } from "../adapters/openai/tools.js";
+import { createConversation, openaiCreateResponse, extractAssistantText, extractToolCalls, buildRequest } from "../adapters/openai/openaiAdapter";
+import { USER_AGENT_SYS, DELEGATOR_SYS, PLANNING_SYS, CODING_SYS } from "../adapters/openai/prompts";
+import { tool_delegate, tool_plan, tool_code, tool_exec, tool_readfile } from "../adapters/openai/tools";
 const execp = promisify(execCallback);
 const { stdin: input, stdout: output } = process;
+const projectStructure = (eztree('.') || '(tree generation error)').split('\n').subarray(0, 50).join('\n');
 // ───────────── Recursive Runner ─────────────
 async function runWithTools({ model, system, userInput, tools, agentLabel, depth = 0, ctx = { lastPlanSummary: "" }, transcripts = [], collectUser = null, quiet = false, }) {
     const convId = await createConversation();
@@ -64,7 +65,10 @@ async function runWithTools({ model, system, userInput, tools, agentLabel, depth
                     out = await runWithTools({
                         model: "gpt-4.1-mini",
                         system: DELEGATOR_SYS,
-                        userInput: `Task: ${brief}`,
+                        userInput: `Current project structure:
+${projectStructure}
+
+Task: ${brief}`,
                         tools: [tool_plan, tool_code, tool_exec],
                         agentLabel: "Delegation Agent",
                         depth: depth + 1,
@@ -74,14 +78,13 @@ async function runWithTools({ model, system, userInput, tools, agentLabel, depth
                     });
                 }
                 else if (name === "plan") {
-                    const projectStructure = eztree('.') || '(tree generation error)';
                     out = await runWithTools({
                         model: "gpt-4.1",
                         system: PLANNING_SYS,
                         userInput: `Current project structure:
-${'${projectStructure}'}
+${projectStructure}
 
-Plan for: ${'${brief}'}`,
+Plan for: ${brief}`,
                         tools: [tool_readfile, { type: 'web_search', name: 'web_search', parameters: {} }],
                         agentLabel: "Planning Agent",
                         depth: depth + 1,
@@ -100,9 +103,9 @@ Plan for: ${'${brief}'}`,
                         model: "gpt-4.1",
                         system: CODING_SYS,
                         userInput: `Target file: ${outPath}
-Target file current content:\n\n${'${currentFile}'}\n\n              
-Task: ${'${briefOnly}'}
-Plan Summary: ${'${ctx.lastPlanSummary}'}
+Target file current content:\n\n${currentFile}\n\n              
+Task: ${briefOnly}
+Plan Summary: ${ctx.lastPlanSummary}
 
 Return RAW code only (no fences, no prose).`,
                         tools: [],
