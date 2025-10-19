@@ -28,11 +28,15 @@ if (!API_KEY) {
 }
 const BASE = process.env.OPENAI_BASE_URL || "https://api.openai.com";
 
-const TRUNCATE_LIMIT = 5000;
+const TRUNCATE_LIMIT = 55;
 const TRUNCATE_TO_FIRST_LINE = false;
 
 const PROJECT_ROOT = path.resolve(process.cwd()); // working directory = project root
 const REAL_PROJECT_ROOT = await fs.promises.realpath(PROJECT_ROOT).catch(() => PROJECT_ROOT);
+
+const fullTree = eztree('.');
+const treeLimit = 300;
+const projectStructure = (fullTree || '(tree generation error)').substring(0, treeLimit) + fullTree > treeLimit ? '... (truncated)' : '';
 
 // ───────────── Utilities ─────────────
 
@@ -320,7 +324,10 @@ async function runWithTools({
                     out = await runWithTools({
                         model: "gpt-4.1-mini",
                         system: DELEGATOR_SYS,
-                        userInput: `Task: ${brief}`,
+                        userInput: `Current project structure:
+${projectStructure}
+
+Task: ${brief}`,
                         tools: [tool_plan, tool_code, tool_exec],
                         agentLabel: "Delegation Agent",
                         depth: depth + 1,
@@ -329,7 +336,6 @@ async function runWithTools({
                         quiet: true,
                     });
                 } else if (name === "plan") {
-                    const projectStructure = eztree('.') || '(tree generation error)';
                     out = await runWithTools({
                         model: "gpt-4.1",
                         system: PLANNING_SYS,
